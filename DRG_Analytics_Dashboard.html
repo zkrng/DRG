@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>DRG Analytics Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f4f1;color:#1e1e1c;font-size:13px;line-height:1.5}
+
+/* ── Upload screen ── */
+#upload-screen{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:40px}
+.upload-title{font-size:22px;font-weight:700;color:#0c447c}
+.upload-sub{font-size:13px;color:#888780;text-align:center;max-width:500px}
+.file-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:600px}
+.file-box{background:#fff;border:1.5px dashed #d0cec8;border-radius:12px;padding:16px 18px;cursor:pointer;transition:border-color .2s}
+.file-box:hover{border-color:#185fa5}
+.file-box.loaded{border-color:#3b6d11;border-style:solid}
+.file-box.loaded .fb-icon{color:#3b6d11}
+.fb-icon{font-size:20px;margin-bottom:6px;color:#b0aea8}
+.fb-name{font-size:11.5px;font-weight:600;color:#1e1e1c;margin-bottom:2px}
+.fb-desc{font-size:10px;color:#888780}
+.fb-status{font-size:10px;margin-top:4px;color:#3b6d11;font-weight:600;display:none}
+.file-box.loaded .fb-status{display:block}
+.file-input{display:none}
+.launch-btn{padding:12px 32px;font-size:14px;font-weight:600;background:#0c447c;color:#fff;border:none;border-radius:10px;cursor:pointer;opacity:.4;pointer-events:none;transition:opacity .2s}
+.launch-btn.ready{opacity:1;pointer-events:all}
+.launch-btn.ready:hover{background:#185fa5}
+.or-line{display:flex;align-items:center;gap:12px;width:600px;color:#b0aea8;font-size:11px}
+.or-line::before,.or-line::after{content:'';flex:1;height:1px;background:#e0ded8}
+.demo-btn{padding:8px 20px;font-size:12px;font-weight:500;background:transparent;color:#185fa5;border:1px solid #185fa5;border-radius:8px;cursor:pointer}
+.demo-btn:hover{background:#e6f1fb}
+
+/* ── Dashboard ── */
+#dashboard{display:none}
+header{background:#0c447c;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+header h1{font-size:17px;font-weight:700;white-space:nowrap}
+header .sub{font-size:10.5px;opacity:.65;margin-top:1px}
+.nav{display:flex;gap:3px;flex-wrap:wrap}
+.nav a{color:#b5d4f4;font-size:11px;padding:4px 11px;border-radius:6px;text-decoration:none;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.nav a:hover,.nav a.on{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.2);color:#fff}
+.reload-btn{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;white-space:nowrap}
+.reload-btn:hover{background:rgba(255,255,255,.2)}
+.main{padding:18px 22px;display:flex;flex-direction:column;gap:16px}
+.section{display:none}.section.on{display:flex;flex-direction:column;gap:14px}
+
+/* ── KPI grid ── */
+.g4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.g2{display:grid;grid-template-columns:1.55fr 1fr;gap:13px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:13px}
+.g2b{display:grid;grid-template-columns:1fr 1.25fr;gap:13px}
+.g2c{display:grid;grid-template-columns:1.2fr 1fr;gap:13px}
+.kpi{background:#fff;border:1px solid #e0ded8;border-radius:12px;padding:13px 16px}
+.kpi-l{font-size:10px;font-weight:700;color:#888780;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.kpi-v{font-size:21px;font-weight:700;line-height:1.1;color:#1e1e1c}
+.kpi-s{font-size:10px;color:#b0aea8;margin-top:2px}
+.bl .kpi-v{color:#185fa5}.am .kpi-v{color:#854f0b}.rd .kpi-v{color:#a32d2d}.gr .kpi-v{color:#3b6d11}.pu .kpi-v{color:#3c3489}
+
+/* ── Cards ── */
+.card{background:#fff;border:1px solid #e0ded8;border-radius:12px;padding:15px}
+.ct{font-size:10px;font-weight:700;color:#888780;text-transform:uppercase;letter-spacing:.05em;margin-bottom:11px}
+
+/* ── Bar rows ── */
+.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.bar-lbl{font-size:11px;color:#888780;width:138px;flex-shrink:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-track{flex:1;height:8px;background:#eeece8;border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px}
+.bar-val{font-size:11px;color:#888780;width:62px;flex-shrink:0}
+
+/* ── Tables ── */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:11px;min-width:600px}
+th{text-align:left;padding:6px 8px;font-weight:700;color:#888780;border-bottom:1.5px solid #e0ded8;font-size:10px;white-space:nowrap}
+td{padding:5px 8px;border-bottom:.5px solid #f0eee8;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#f8f7f4}
+.bx{display:inline-block;padding:2px 7px;border-radius:7px;font-size:9.5px;font-weight:700;white-space:nowrap}
+.bbl{background:#e6f1fb;color:#185fa5}
+.bam{background:#faeeda;color:#854f0b}
+.brd{background:#fcebeb;color:#a32d2d}
+.bgr{background:#eaf3de;color:#3b6d11}
+.bgy{background:#f1efe8;color:#5f5e5a}
+.bpu{background:#eeedfe;color:#3c3489}
+
+/* ── Tabs ── */
+.tab-bar{display:flex;gap:5px;margin-bottom:11px;flex-wrap:wrap}
+.tab{padding:4px 13px;font-size:11px;border-radius:20px;cursor:pointer;border:1px solid #d8d6d0;background:transparent;color:#888780;transition:all .15s}
+.tab.on{background:#e6f1fb;color:#185fa5;border-color:transparent}
+select{font-size:11px;padding:3px 8px;border-radius:7px;border:1px solid #d8d6d0;background:#f8f7f4;color:#1e1e1c;cursor:pointer;margin-bottom:8px}
+
+/* ── Scatter ── */
+.sw{position:relative;height:215px;border:.5px solid #e8e6e0;border-radius:8px;overflow:hidden;background:#fafaf8}
+.dot{position:absolute;border-radius:50%;transform:translate(-50%,-50%);cursor:pointer}
+.dot:hover{z-index:5;opacity:1!important;outline:2px solid rgba(255,255,255,.8)}
+.tip{position:absolute;background:#fff;border:1px solid #d0cec8;border-radius:9px;padding:9px 12px;font-size:11px;pointer-events:none;display:none;z-index:30;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,.14);line-height:1.65}
+.leg{display:flex;gap:8px;flex-wrap:wrap;margin-top:7px}
+.li{display:flex;align-items:center;gap:4px;font-size:10px;color:#888780}
+.ld{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+/* ── Model cards ── */
+.metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mc{background:#f8f7f4;border:1px solid #e8e6e0;border-radius:10px;padding:13px 15px}
+.mc-name{font-size:11px;font-weight:700;color:#185fa5;margin-bottom:9px}
+.mc-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+.mc-k{font-size:10.5px;color:#888780}
+.mc-v{font-size:11.5px;font-weight:700}
+.mc-v.g{color:#3b6d11}.mc-v.w{color:#854f0b}.mc-v.r{color:#a32d2d}
+.prog{height:5px;background:#e8e6e0;border-radius:3px;overflow:hidden;margin-top:2px;margin-bottom:6px}
+.prog-f{height:100%;border-radius:3px}
+.mc-note{font-size:9.5px;color:#888780;margin-top:8px;line-height:1.5}
+
+/* ── Comorbidity grid ── */
+.cm-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.cm-row{display:flex;align-items:center;gap:6px}
+.cm-lbl{font-size:10px;color:#888780;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cm-bar{width:70px;height:5px;background:#e8e6e0;border-radius:3px;overflow:hidden;flex-shrink:0}
+.cm-fill{height:100%;border-radius:3px;background:#534AB7}
+.cm-val{font-size:9.5px;color:#888780;width:30px;text-align:right;flex-shrink:0}
+
+/* ── Peer row ── */
+.peer-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:9px 12px;background:#f8f7f4;border-radius:9px;border:1px solid #eeece8}
+.peer-lbl{font-size:11px;font-weight:700;color:#185fa5;width:96px;flex-shrink:0}
+.peer-stats{display:flex;gap:18px;flex:1;flex-wrap:wrap}
+.ps{font-size:10.5px;color:#888780}
+.ps b{color:#1e1e1c}
+
+/* ── Loading spinner ── */
+.loading{display:flex;align-items:center;gap:10px;padding:16px;color:#888780;font-size:12px}
+.spin{width:18px;height:18px;border:2px solid #e0ded8;border-top-color:#185fa5;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     UPLOAD SCREEN
+════════════════════════════════════════════════════════════ -->
+<div id="upload-screen">
+  <div style="text-align:center">
+    <div class="upload-title">DRG Analytics Dashboard</div>
+    <div class="upload-sub" style="margin-top:6px">Load your data files below — all numbers are computed live in the browser. Nothing is uploaded to any server.</div>
+  </div>
+
+  <div class="file-grid">
+    <!-- episodes_raw.csv -->
+    <div class="file-box" id="box-ep" onclick="document.getElementById('inp-ep').click()">
+      <div class="fb-icon">📋</div>
+      <div class="fb-name">episodes_raw.csv</div>
+      <div class="fb-desc">Main episode dataset<br>5,000+ rows · clinical &amp; cost data</div>
+      <div class="fb-status" id="st-ep">✓ Loaded</div>
+    </div>
+    <input class="file-input" id="inp-ep" type="file" accept=".csv" onchange="loadFile('ep',this)">
+
+    <!-- providers.csv -->
+    <div class="file-box" id="box-pr" onclick="document.getElementById('inp-pr').click()">
+      <div class="fb-icon">🏥</div>
+      <div class="fb-name">providers.csv</div>
+      <div class="fb-desc">Provider reference table<br>40 providers · specialty, volume, region</div>
+      <div class="fb-status" id="st-pr">✓ Loaded</div>
+    </div>
+    <input class="file-input" id="inp-pr" type="file" accept=".csv" onchange="loadFile('pr',this)">
+
+    <!-- provider_scorecard.csv -->
+    <div class="file-box" id="box-sc" onclick="document.getElementById('inp-sc').click()">
+      <div class="fb-icon">📊</div>
+      <div class="fb-name">provider_scorecard.csv</div>
+      <div class="fb-desc">Benchmarking scorecard<br>Peer groups · percentile ranks · outlier flags</div>
+      <div class="fb-status" id="st-sc">✓ Loaded</div>
+    </div>
+    <input class="file-input" id="inp-sc" type="file" accept=".csv" onchange="loadFile('sc',this)">
+
+    <!-- provider_upcoding_risk.csv -->
+    <div class="file-box" id="box-ur" onclick="document.getElementById('inp-ur').click()">
+      <div class="fb-icon">⚠️</div>
+      <div class="fb-name">provider_upcoding_risk.csv</div>
+      <div class="fb-desc">Upcoding risk report<br>Anomaly scores · flag rates · risk tiers</div>
+      <div class="fb-status" id="st-ur">✓ Loaded</div>
+    </div>
+    <input class="file-input" id="inp-ur" type="file" accept=".csv" onchange="loadFile('ur',this)">
+  </div>
+
+  <button class="launch-btn" id="launch-btn" onclick="launchDashboard()">Launch Dashboard →</button>
+
+  <div class="or-line">or</div>
+  <button class="demo-btn" onclick="loadDemoData()">Load sample data (500 episodes)</button>
+  <div style="font-size:10px;color:#b0aea8">Demo uses the small 500-episode sample embedded in the page</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     DASHBOARD
+════════════════════════════════════════════════════════════ -->
+<div id="dashboard">
+  <header>
+    <div>
+      <h1>DRG Analytics Dashboard</h1>
+      <div class="sub" id="hdr-sub">Loading…</div>
+    </div>
+    <nav class="nav">
+      <a class="on" onclick="showSec('overview',this)">Overview</a>
+      <a onclick="showSec('clinical',this)">Clinical</a>
+      <a onclick="showSec('providers',this)">Providers</a>
+      <a onclick="showSec('upcoding',this)">Upcoding</a>
+      <a onclick="showSec('models',this)">ML Models</a>
+    </nav>
+    <button class="reload-btn" onclick="location.reload()">↩ Change files</button>
+  </header>
+
+  <div class="main">
+
+    <!-- ── OVERVIEW ──────────────────────────────────────── -->
+    <div id="s-overview" class="section on">
+      <div class="g4" id="kpi-row1"></div>
+      <div class="g4" id="kpi-row2"></div>
+      <div class="g2">
+        <div class="card"><div class="ct">Episode cost distribution</div><canvas id="cH" height="152"></canvas></div>
+        <div class="card"><div class="ct">Monthly mean cost &amp; 30-day readmission rate</div><canvas id="mC" height="152"></canvas></div>
+      </div>
+      <div class="g3">
+        <div class="card"><div class="ct">Mean cost by specialty</div><div id="spB"></div></div>
+        <div class="card"><div class="ct">Payer mix</div><canvas id="pC" height="185"></canvas></div>
+        <div class="card"><div class="ct">Admission type breakdown</div><canvas id="admC" height="185"></canvas></div>
+      </div>
+      <div class="g2b">
+        <div class="card">
+          <div class="ct">Cost vs length of stay</div>
+          <select id="sm" onchange="drawScatter()">
+            <option value="sp">Colour by specialty</option>
+            <option value="py">Colour by payer</option>
+            <option value="sev">Colour by severity</option>
+            <option value="up">Colour by upcoding flag</option>
+          </select>
+          <div class="sw" id="sW"><div class="tip" id="stt"></div></div>
+          <div class="leg" id="sLg"></div>
+        </div>
+        <div class="card"><div class="ct">Length of stay distribution</div><canvas id="lH" height="222"></canvas></div>
+      </div>
+    </div>
+
+    <!-- ── CLINICAL ───────────────────────────────────────── -->
+    <div id="s-clinical" class="section">
+      <div class="g2">
+        <div class="card">
+          <div class="ct">Top 15 DRG codes by mean episode cost</div>
+          <div class="tbl-wrap"><table><thead><tr><th>DRG</th><th>Description</th><th>N</th><th>Mean cost</th><th>LoS</th><th>Weight</th><th>Readmit</th><th>Upcoding</th></tr></thead><tbody id="drgB"></tbody></table></div>
+        </div>
+        <div class="card">
+          <div class="ct">Cost by severity level</div>
+          <canvas id="sC" height="160"></canvas>
+          <div class="ct" style="margin-top:14px">Discharge disposition</div>
+          <div id="dispB"></div>
+        </div>
+      </div>
+      <div class="g2c">
+        <div class="card"><div class="ct">Regional breakdown — mean cost &amp; readmission</div><div id="rB"></div></div>
+        <div class="card"><div class="ct">Comorbidity prevalence (Charlson conditions)</div><div class="cm-grid" id="cmB"></div></div>
+      </div>
+    </div>
+
+    <!-- ── PROVIDERS ──────────────────────────────────────── -->
+    <div id="s-providers" class="section">
+      <div class="g4" id="prov-kpis"></div>
+      <div class="card"><div class="ct">Peer group profiles</div><div id="pgB"></div></div>
+      <div class="card">
+        <div class="ct">Full provider scorecard</div>
+        <div class="tab-bar">
+          <button class="tab on" onclick="pvTab(this,'all')">All providers</button>
+          <button class="tab" onclick="pvTab(this,'bot')">Bottom quartile</button>
+          <button class="tab" onclick="pvTab(this,'cost')">Cost outliers</button>
+          <button class="tab" onclick="pvTab(this,'multi')">Multi-flag (≥2)</button>
+        </div>
+        <div class="tbl-wrap"><table><thead><tr><th>Provider</th><th>Specialty</th><th>Region</th><th>Volume</th><th>N eps</th><th>Mean cost</th><th>vs Expected</th><th>LoS</th><th>Readmit</th><th>CMI</th><th>Peer group</th><th>Composite rank</th><th>Tier</th><th>Flags</th></tr></thead><tbody id="pvB"></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- ── UPCODING ───────────────────────────────────────── -->
+    <div id="s-upcoding" class="section">
+      <div class="g4" id="up-kpis"></div>
+      <div class="g2">
+        <div class="card">
+          <div class="ct">Provider upcoding risk report</div>
+          <div class="tab-bar">
+            <button class="tab on" onclick="upTab(this,'all')">All providers</button>
+            <button class="tab" onclick="upTab(this,'hi')">High risk (&gt;20%)</button>
+            <button class="tab" onclick="upTab(this,'cr')">Critical (&gt;30%)</button>
+          </div>
+          <div class="tbl-wrap"><table><thead><tr><th>Provider</th><th>Specialty</th><th>Region</th><th>Volume</th><th>N eps</th><th>Flagged</th><th>Flag rate</th><th>Anomaly score</th><th>Mean cost</th><th>Risk level</th></tr></thead><tbody id="upB"></tbody></table></div>
+        </div>
+        <div class="card"><div class="ct">Flag rate by specialty</div><canvas id="upSpec" height="220"></canvas></div>
+      </div>
+    </div>
+
+    <!-- ── ML MODELS ──────────────────────────────────────── -->
+    <div id="s-models" class="section">
+      <div class="metric-grid" id="mlCards"></div>
+      <div class="card"><div class="ct">Cost model — train vs test performance comparison</div><canvas id="mlChart" height="130"></canvas></div>
+    </div>
+
+  </div><!-- .main -->
+</div><!-- #dashboard -->
+
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════
+const FILES = { ep: null, pr: null, sc: null, ur: null };
+const REQUIRED = ['ep','pr','sc','ur'];
+
+// model_summary.md values — user reads from the md and can adjust
+// these are the ONLY values not from CSV (model evaluation metrics)
+const MODEL_METRICS = {
+  cost:      { train_r2:0, test_r2:0, train_rmse:0, test_rmse:0, train_mae:0, test_mae:0 },
+  readmit:   { auc_roc:0, auc_pr:0, f1:0, sensitivity:0, specificity:0, ppv:0, npv:0, threshold:0 },
+  anomaly:   { auc_roc:0, auc_pr:0, precision:0, recall:0 },
+  benchmark: { n_providers:0, peer_groups:0, cost_outliers:0, los_outliers:0, readmit_outliers:0 },
+};
+
+// Colour palettes
+const SPEC_ORDER = ['Neurology','Nephrology','General Medicine','Cardiology','General Surgery','Orthopaedics','Gastroenterology','Respiratory'];
+const PAL = ['#185FA5','#0F6E56','#534AB7','#BA7517','#993C1D','#3B6D11','#639922','#854F0B'];
+const SC = {}; SPEC_ORDER.forEach((s,i)=>SC[s]=PAL[i%PAL.length]);
+const PC = {'Private':'#185FA5','Medicare':'#0F6E56','Medicaid':'#BA7517','Self-pay':'#888780'};
+const SEV_C = ['#B5D4F4','#185FA5','#BA7517','#E24B4A'];
+
+// Chart registry
+const CHARTS = {};
+let _pvMode = 'all', _upMode = 'all';
+
+// ═══════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════
+const fmt  = n => '$' + Math.round(n).toLocaleString();
+const pct  = n => (n * 100).toFixed(1) + '%';
+const mean = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
+const sum  = arr => arr.reduce((a,b)=>a+b,0);
+const median = arr => { if(!arr.length)return 0; const s=[...arr].sort((a,b)=>a-b); const m=Math.floor(s.length/2); return s.length%2?s[m]:(s[m-1]+s[m])/2; };
+
+function groupBy(rows, key, agg) {
+  const map = {};
+  rows.forEach(r => {
+    const k = r[key] ?? 'Unknown';
+    if (!map[k]) map[k] = [];
+    map[k].push(r);
+  });
+  return Object.entries(map).map(([k, rs]) => ({ key: k, ...agg(rs) }));
+}
+
+function histogram(vals, bins) {
+  if (!vals.length) return [];
+  const mn = Math.min(...vals), mx = Math.max(...vals);
+  const w = (mx - mn) / bins;
+  const counts = Array(bins).fill(0);
+  vals.forEach(v => { let i = Math.min(Math.floor((v - mn) / w), bins - 1); counts[i]++; });
+  return counts.map((y, i) => ({ x: Math.round(mn + (i + 0.5) * w), y }));
+}
+
+const rb = r => r >= .25 ? `<span class="bx brd">${pct(r)}</span>` : r >= .15 ? `<span class="bx bam">${pct(r)}</span>` : `<span class="bx bgr">${pct(r)}</span>`;
+const ub = u => u > .2  ? `<span class="bx brd">${pct(u)}</span>` : u > .08 ? `<span class="bx bam">${pct(u)}</span>` : `<span class="bx bgr">${pct(u||0)}</span>`;
+const vb = v => v==='High' ? `<span class="bx bbl">${v}</span>` : v==='Low' ? `<span class="bx bgy">${v}</span>` : `<span class="bx bgr">${v}</span>`;
+const pb = s => s==='Bottom Quartile'?`<span class="bx brd">${s}</span>`:s==='Below Average'?`<span class="bx bam">${s}</span>`:s==='Above Average'?`<span class="bx bbl">${s}</span>`:`<span class="bx bgr">${s}</span>`;
+const riskBx = s => s==='Critical'?`<span class="bx brd">${s}</span>`:s==='High'?`<span class="bx bam">${s}</span>`:s==='Medium'?`<span class="bx bbl">${s}</span>`:`<span class="bx bgr">${s}</span>`;
+
+function makeChart(id, cfg) {
+  if (CHARTS[id]) { CHARTS[id].destroy(); delete CHARTS[id]; }
+  const el = document.getElementById(id);
+  if (!el) return;
+  CHARTS[id] = new Chart(el, cfg);
+}
+
+// ═══════════════════════════════════════════════════════
+//  FILE LOADING
+// ═══════════════════════════════════════════════════════
+function loadFile(key, input) {
+  const file = input.files[0];
+  if (!file) return;
+  Papa.parse(file, {
+    header: true,
+    dynamicTyping: true,
+    skipEmptyLines: true,
+    complete: result => {
+      FILES[key] = result.data;
+      document.getElementById('box-' + key).classList.add('loaded');
+      document.getElementById('st-' + key).textContent = `✓ ${result.data.length} rows loaded`;
+      checkReady();
+    },
+    error: e => alert('Error reading ' + file.name + ': ' + e.message),
+  });
+}
+
+function checkReady() {
+  const allLoaded = REQUIRED.every(k => FILES[k] !== null);
+  const btn = document.getElementById('launch-btn');
+  btn.classList.toggle('ready', allLoaded);
+}
+
+function launchDashboard() {
+  document.getElementById('upload-screen').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  buildAll();
+}
+
+// ═══════════════════════════════════════════════════════
+//  DEMO DATA — small embedded fallback
+// ═══════════════════════════════════════════════════════
+function loadDemoData() {
+  // We'll use the uploaded files path directly since they exist
+  const paths = {
+    ep: '/mnt/user-data/uploads/episodes_raw.csv',
+    pr: '/mnt/user-data/uploads/providers.csv',
+    sc: '/mnt/user-data/uploads/provider_scorecard.csv',
+    ur: '/mnt/user-data/uploads/provider_upcoding_risk.csv',
+  };
+  let loaded = 0;
+  const total = Object.keys(paths).length;
+  Object.entries(paths).forEach(([key, path]) => {
+    fetch(path)
+      .then(r => r.text())
+      .then(txt => {
+        const result = Papa.parse(txt, { header: true, dynamicTyping: true, skipEmptyLines: true });
+        FILES[key] = result.data;
+        document.getElementById('box-' + key).classList.add('loaded');
+        document.getElementById('st-' + key).textContent = `✓ ${result.data.length} rows loaded`;
+        loaded++;
+        if (loaded === total) {
+          checkReady();
+          launchDashboard();
+        }
+      })
+      .catch(() => {
+        // Fallback: just mark as needing manual upload
+        document.getElementById('st-' + key).textContent = 'Please upload manually';
+      });
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  NAVIGATION
+// ═══════════════════════════════════════════════════════
+function showSec(id, el) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('on'));
+  document.querySelectorAll('.nav a').forEach(a => a.classList.remove('on'));
+  document.getElementById('s-' + id).classList.add('on');
+  el.classList.add('on');
+}
+
+// ═══════════════════════════════════════════════════════
+//  MASTER BUILD
+// ═══════════════════════════════════════════════════════
+function buildAll() {
+  const ep = FILES.ep;
+  const sc = FILES.sc;
+  const ur = FILES.ur;
+
+  // Parse dates & derive month
+  ep.forEach(r => {
+    r._date = new Date(r.admission_date);
+    r._month = r._date.toISOString().slice(0, 7);
+  });
+
+  // Update header subtitle
+  const dates = ep.map(r => r._date).filter(d => !isNaN(d));
+  const minD = new Date(Math.min(...dates));
+  const maxD = new Date(Math.max(...dates));
+  const fmt2 = d => d.toLocaleString('en-US',{month:'short',year:'numeric'});
+  document.getElementById('hdr-sub').textContent =
+    `${ep.length.toLocaleString()} episodes · ${ep.filter(r=>r.provider_id).map(r=>r.provider_id).filter((v,i,a)=>a.indexOf(v)===i).length} providers · ${fmt2(minD)} – ${fmt2(maxD)}`;
+
+  buildOverview(ep);
+  buildClinical(ep);
+  buildProviders(sc, ep);
+  buildUpcoding(ur, ep);
+  buildModels(sc);
+}
+
+// ═══════════════════════════════════════════════════════
+//  OVERVIEW
+// ═══════════════════════════════════════════════════════
+function buildOverview(ep) {
+  const costs    = ep.map(r => r.episode_cost);
+  const losList  = ep.map(r => r.actual_los);
+  const readmits = ep.map(r => r.readmitted_30d);
+  const upcoded  = ep.map(r => r._is_upcoded);
+
+  const totalSpend   = sum(costs);
+  const meanCost     = mean(costs);
+  const medCost      = median(costs);
+  const meanLos      = mean(losList);
+  const readmitRate  = mean(readmits);
+  const upcodeRate   = mean(upcoded);
+  const nProviders   = new Set(ep.map(r=>r.provider_id)).size;
+  const nDrg         = new Set(ep.map(r=>r.drg_code)).size;
+
+  // KPI row 1
+  document.getElementById('kpi-row1').innerHTML = `
+    <div class="kpi bl"><div class="kpi-l">Total network spend</div><div class="kpi-v">${fmt(totalSpend/1e6).replace('$','') < 1000 ? '$'+( totalSpend/1e6).toFixed(1)+'M' : fmt(totalSpend)}</div><div class="kpi-s">${ep.length.toLocaleString()} episodes</div></div>
+    <div class="kpi"><div class="kpi-l">Mean episode cost</div><div class="kpi-v">${fmt(meanCost)}</div><div class="kpi-s">Median ${fmt(medCost)}</div></div>
+    <div class="kpi"><div class="kpi-l">Mean length of stay</div><div class="kpi-v">${meanLos.toFixed(1)} days</div><div class="kpi-s">${nDrg} DRG codes · ${nProviders} providers</div></div>
+    <div class="kpi am"><div class="kpi-l">30-day readmission</div><div class="kpi-v">${pct(readmitRate)}</div><div class="kpi-s">${Math.round(sum(readmits)).toLocaleString()} episodes readmitted</div></div>`;
+
+  // KPI row 2
+  const maxCost = Math.max(...costs);
+  const minCost = Math.min(...costs);
+  const costStd = Math.sqrt(mean(costs.map(c=>(c-meanCost)**2)));
+  document.getElementById('kpi-row2').innerHTML = `
+    <div class="kpi"><div class="kpi-l">Max episode cost</div><div class="kpi-v">${fmt(maxCost)}</div><div class="kpi-s">Min ${fmt(minCost)}</div></div>
+    <div class="kpi"><div class="kpi-l">Cost std deviation</div><div class="kpi-v">${fmt(costStd)}</div><div class="kpi-s">Right-skewed distribution</div></div>
+    <div class="kpi rd"><div class="kpi-l">Upcoding flag rate</div><div class="kpi-v">${pct(upcodeRate)}</div><div class="kpi-s">${sum(upcoded).toFixed(0)} episodes flagged</div></div>
+    <div class="kpi gr"><div class="kpi-l">Mean DRG weight</div><div class="kpi-v">${mean(ep.map(r=>r.drg_weight)).toFixed(2)}</div><div class="kpi-s">Case mix index proxy</div></div>`;
+
+  // Cost histogram
+  const ch = histogram(costs, 30).filter(d => d.y > 0);
+  makeChart('cH', { type:'bar', data:{
+    labels: ch.map(d=>'$'+Math.round(d.x/1000)+'k'),
+    datasets:[{data:ch.map(d=>d.y),backgroundColor:'#185FA5',borderRadius:3,barPercentage:.92}]
+  }, options:{plugins:{legend:{display:false},tooltip:{callbacks:{title:t=>'~'+t[0].label,label:l=>l.raw+' episodes'}}},scales:{x:{ticks:{maxTicksLimit:9,font:{size:9}},grid:{display:false}},y:{ticks:{font:{size:9}},grid:{color:'rgba(0,0,0,0.05)'}}},animation:{duration:400}}});
+
+  // Monthly dual-axis
+  const monthly = groupBy(ep, '_month', rs => ({
+    episodes: rs.length,
+    mean_cost: mean(rs.map(r=>r.episode_cost)),
+    readmit_rate: mean(rs.map(r=>r.readmitted_30d)),
+  })).sort((a,b)=>a.key.localeCompare(b.key));
+  makeChart('mC', { type:'bar', data:{
+    labels: monthly.map(d=>d.key.replace('20','')),
+    datasets:[
+      {type:'line',label:'Readmit %',data:monthly.map(d=>+(d.readmit_rate*100).toFixed(1)),borderColor:'#E24B4A',backgroundColor:'transparent',yAxisID:'y2',tension:.3,pointRadius:2,borderWidth:1.8},
+      {type:'bar',  label:'Mean cost', data:monthly.map(d=>+d.mean_cost.toFixed(0)),backgroundColor:'#B5D4F4',yAxisID:'y1',borderRadius:2,barPercentage:.8}
+    ]
+  }, options:{plugins:{legend:{position:'bottom',labels:{font:{size:9},boxWidth:9}}},scales:{x:{ticks:{font:{size:8},maxTicksLimit:14},grid:{display:false}},y1:{position:'left',ticks:{callback:v=>'$'+Math.round(v/1000)+'k',font:{size:9}},grid:{color:'rgba(0,0,0,0.04)'}},y2:{position:'right',ticks:{callback:v=>v+'%',font:{size:9}},grid:{display:false}}},animation:{duration:400}}});
+
+  // Specialty bars
+  const specGrp = groupBy(ep,'specialty',rs=>({mean_cost:mean(rs.map(r=>r.episode_cost)),episodes:rs.length}))
+    .sort((a,b)=>b.mean_cost-a.mean_cost);
+  const spMx = Math.max(...specGrp.map(d=>d.mean_cost));
+  document.getElementById('spB').innerHTML = specGrp.map(d=>`
+    <div class="bar-row">
+      <div class="bar-lbl" title="${d.key}">${d.key.replace('General ','Gen. ')}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(d.mean_cost/spMx*100).toFixed(1)}%;background:${SC[d.key]||'#185FA5'}"></div></div>
+      <div class="bar-val">${fmt(d.mean_cost)}</div>
+    </div>`).join('');
+
+  // Payer donut
+  const payerGrp = groupBy(ep,'payer',rs=>({count:rs.length,mean_cost:mean(rs.map(r=>r.episode_cost))}))
+    .sort((a,b)=>b.count-a.count);
+  makeChart('pC', {type:'doughnut', data:{
+    labels: payerGrp.map(d=>d.key),
+    datasets:[{data:payerGrp.map(d=>d.count),backgroundColor:payerGrp.map(d=>PC[d.key]||'#888'),borderWidth:0,hoverOffset:4}]
+  }, options:{cutout:'60%',plugins:{legend:{position:'bottom',labels:{font:{size:9},boxWidth:9}},tooltip:{callbacks:{label:l=>l.label+': '+l.raw+' eps · '+fmt(payerGrp[l.dataIndex].mean_cost)+' avg'}}},animation:{duration:400}}});
+
+  // Admission type
+  const admGrp = groupBy(ep,'admission_type',rs=>({count:rs.length,readmit_rate:mean(rs.map(r=>r.readmitted_30d)),mean_cost:mean(rs.map(r=>r.episode_cost))}))
+    .sort((a,b)=>b.count-a.count);
+  makeChart('admC', {type:'bar', data:{
+    labels: admGrp.map(d=>d.key),
+    datasets:[{label:'N episodes',data:admGrp.map(d=>d.count),backgroundColor:admGrp.map((_,i)=>PAL[i%PAL.length]),borderRadius:4}]
+  }, options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:l=>`${l.raw} eps · readmit ${pct(admGrp[l.dataIndex].readmit_rate)}`}}},scales:{x:{ticks:{font:{size:9}},grid:{display:false}},y:{ticks:{font:{size:9}},grid:{color:'rgba(0,0,0,0.05)'}}},animation:{duration:400}}});
+
+  // LoS histogram
+  const lh = histogram(losList, 35).filter(d=>d.y>0);
+  const meanLosR = Math.round(meanLos);
+  makeChart('lH', {type:'bar', data:{
+    labels: lh.map(d=>d.x),
+    datasets:[{data:lh.map(d=>d.y),backgroundColor:lh.map(d=>d.x===meanLosR?'#E24B4A':'#0F6E56'),borderRadius:2,barPercentage:.95}]
+  }, options:{plugins:{legend:{display:false},tooltip:{callbacks:{title:t=>'LoS '+t[0].label+' days',label:l=>l.raw+' episodes'}}},scales:{x:{ticks:{font:{size:9},maxTicksLimit:15},grid:{display:false}},y:{ticks:{font:{size:9}},grid:{color:'rgba(0,0,0,0.04)'}}},animation:{duration:400}}});
+
+  // Store scatter data for lazy render
+  window._scatterData = ep;
+  setTimeout(drawScatter, 300);
+}
+
+// ── Scatter ──────────────────────────────────────────
+window.drawScatter = function() {
+  const ep = window._scatterData;
+  if (!ep) return;
+  const sample = ep.length > 500 ? ep.filter((_,i)=>i%Math.ceil(ep.length/500)===0) : ep;
+  const mode = document.getElementById('sm').value;
+  const wrap = document.getElementById('sW');
+  wrap.querySelectorAll('.dot').forEach(e=>e.remove());
+  const W = wrap.offsetWidth || 420, H = 215;
+  const mxC = Math.max(...sample.map(d=>d.episode_cost));
+  const mxL = Math.max(...sample.map(d=>d.actual_los));
+  const co = d => {
+    if (mode==='sp') return SC[d.specialty] || '#888';
+    if (mode==='py') return PC[d.payer] || '#888';
+    if (mode==='sev') return SEV_C[(d.severity||1)-1];
+    return d._is_upcoded ? '#E24B4A' : '#185FA5';
+  };
+  sample.forEach(d => {
+    const x = (d.actual_los / mxL) * (W-30) + 15;
+    const y = H - (d.episode_cost / mxC) * (H-30) - 15;
+    const el = document.createElement('div');
+    el.className = 'dot';
+    const isUp = d._is_upcoded && mode==='up';
+    el.style.cssText = `left:${x}px;top:${y}px;width:${isUp?9:6}px;height:${isUp?9:6}px;background:${co(d)};opacity:${isUp?1:.62};${isUp?'border:2px solid #a32d2d':''}`;
+    el.onmouseenter = () => {
+      const t = document.getElementById('stt');
+      t.style.display='block';
+      t.style.left = Math.min(x+10, W-168)+'px';
+      t.style.top  = Math.max(y-80,  2)+'px';
+      t.innerHTML = `<b>${d.specialty}</b><br>${d.payer} · Sev ${d.severity} · Charlson ${d.charlson_score}<br>Cost: ${fmt(d.episode_cost)}<br>LoS: ${d.actual_los}d · DRG wt: ${(d.drg_weight||0).toFixed(2)}${d._is_upcoded?'<br><b style="color:#a32d2d">⚑ Upcoding flagged</b>':''}`;
+    };
+    el.onmouseleave = () => { document.getElementById('stt').style.display='none'; };
+    wrap.appendChild(el);
+  });
+  const ks = mode==='sp' ? SPEC_ORDER : mode==='py' ? ['Private','Medicare','Medicaid','Self-pay'] : mode==='sev' ? ['Severity 1','Severity 2','Severity 3','Severity 4'] : ['Normal','Flagged upcoding'];
+  const cs = mode==='sp' ? PAL : mode==='py' ? ['#185FA5','#0F6E56','#BA7517','#888780'] : mode==='sev' ? SEV_C : ['#185FA5','#E24B4A'];
+  document.getElementById('sLg').innerHTML = ks.map((k,i)=>`<div class="li"><div class="ld" style="background:${cs[i]}"></div>${k}</div>`).join('');
+};
+
+// ═══════════════════════════════════════════════════════
+//  CLINICAL
+// ═══════════════════════════════════════════════════════
+function buildClinical(ep) {
+  // Top DRGs
+  const drgGrp = groupBy(ep,'drg_code',rs=>({
+    desc: rs[0].drg_description,
+    n: rs.length,
+    mean_cost: mean(rs.map(r=>r.episode_cost)),
+    mean_los: mean(rs.map(r=>r.actual_los)),
+    mean_weight: mean(rs.map(r=>r.drg_weight)),
+    readmit_rate: mean(rs.map(r=>r.readmitted_30d)),
+    upcoding_rate: mean(rs.map(r=>r._is_upcoded)),
+  })).sort((a,b)=>b.mean_cost-a.mean_cost).slice(0,15);
+  document.getElementById('drgB').innerHTML = drgGrp.map(d=>`<tr>
+    <td><span class="bx bbl">${d.key}</span></td>
+    <td>${d.desc}</td><td>${d.n}</td>
+    <td><b>${fmt(d.mean_cost)}</b></td>
+    <td>${d.mean_los.toFixed(1)}d</td>
+    <td>${d.mean_weight.toFixed(2)}</td>
+    <td>${rb(d.readmit_rate)}</td>
+    <td>${ub(d.upcoding_rate)}</td>
+  </tr>`).join('');
+
+  // Severity chart
+  const sevGrp = groupBy(ep,'severity',rs=>({
+    mean_cost: mean(rs.map(r=>r.episode_cost)),
+    median_cost: median(rs.map(r=>r.episode_cost)),
+    count: rs.length,
+  })).sort((a,b)=>+a.key-+b.key);
+  makeChart('sC',{type:'bar',data:{
+    labels: sevGrp.map(d=>'Severity '+d.key+' (n='+d.count+')'),
+    datasets:[
+      {label:'Mean',data:sevGrp.map(d=>+d.mean_cost.toFixed(0)),backgroundColor:'#185FA5',borderRadius:3,barPercentage:.5},
+      {label:'Median',data:sevGrp.map(d=>+d.median_cost.toFixed(0)),backgroundColor:'#B5D4F4',borderRadius:3,barPercentage:.5}
+    ]
+  },options:{plugins:{legend:{position:'bottom',labels:{font:{size:9},boxWidth:9}},tooltip:{callbacks:{label:l=>l.dataset.label+': '+fmt(l.raw)}}},scales:{x:{ticks:{font:{size:9}},grid:{display:false}},y:{ticks:{callback:v=>'$'+Math.round(v/1000)+'k',font:{size:9}},grid:{color:'rgba(0,0,0,0.04)'}}},animation:{duration:400}}});
+
+  // Disposition bars
+  const dispGrp = groupBy(ep,'disposition',rs=>({count:rs.length,mean_cost:mean(rs.map(r=>r.episode_cost))}))
+    .sort((a,b)=>b.count-a.count);
+  const dMx = Math.max(...dispGrp.map(d=>d.count));
+  document.getElementById('dispB').innerHTML = dispGrp.map(d=>`
+    <div class="bar-row">
+      <div class="bar-lbl">${d.key}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(d.count/dMx*100).toFixed(1)}%;background:#534AB7"></div></div>
+      <div class="bar-val">${d.count} eps</div>
+    </div>`).join('');
+
+  // Region bars
+  const regGrp = groupBy(ep,'region',rs=>({
+    episodes:rs.length,mean_cost:mean(rs.map(r=>r.episode_cost)),readmit_rate:mean(rs.map(r=>r.readmitted_30d))
+  })).sort((a,b)=>b.mean_cost-a.mean_cost);
+  const rMx = Math.max(...regGrp.map(d=>d.mean_cost));
+  document.getElementById('rB').innerHTML = regGrp.map(d=>`
+    <div style="margin-bottom:11px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+        <span style="font-size:11px;font-weight:700">${d.key}</span>
+        <span style="font-size:10px;color:#888780">${d.episodes} eps · readmit ${pct(d.readmit_rate)}</span>
+      </div>
+      <div class="bar-row" style="margin-bottom:0">
+        <div class="bar-track" style="flex:1"><div class="bar-fill" style="width:${(d.mean_cost/rMx*100).toFixed(1)}%;background:#185FA5"></div></div>
+        <div class="bar-val">${fmt(d.mean_cost)}</div>
+      </div>
+    </div>`).join('');
+
+  // Comorbidity rates
+  const cmCols = Object.keys(ep[0]).filter(c=>c.startsWith('cm_'));
+  const cmRates = cmCols.map(c=>({
+    name: c.replace('cm_','').replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase()),
+    rate: mean(ep.map(r=>r[c]||0))
+  })).sort((a,b)=>b.rate-a.rate);
+  const cmMx = cmRates[0]?.rate || 1;
+  document.getElementById('cmB').innerHTML = cmRates.map(c=>`
+    <div class="cm-row">
+      <div class="cm-lbl" title="${c.name}">${c.name}</div>
+      <div class="cm-bar"><div class="cm-fill" style="width:${(c.rate/cmMx*100).toFixed(0)}%"></div></div>
+      <div class="cm-val">${pct(c.rate)}</div>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+//  PROVIDERS
+// ═══════════════════════════════════════════════════════
+function buildProviders(sc, ep) {
+  const costOutliers = sc.filter(r=>r.cost_outlier===1).length;
+  const losOutliers  = sc.filter(r=>r.los_outlier===1).length;
+  const rdOutliers   = sc.filter(r=>r.readmit_outlier===1).length;
+  const multiFlag    = sc.filter(r=>r.n_outlier_flags>=2).length;
+  const nPeerGroups  = new Set(sc.map(r=>r.peer_group_label)).size;
+
+  document.getElementById('prov-kpis').innerHTML = `
+    <div class="kpi bl"><div class="kpi-l">Providers benchmarked</div><div class="kpi-v">${sc.length}</div><div class="kpi-s">${nPeerGroups} peer groups</div></div>
+    <div class="kpi rd"><div class="kpi-l">Cost outliers</div><div class="kpi-v">${costOutliers}</div><div class="kpi-s">≥ 90th pct in peer group</div></div>
+    <div class="kpi am"><div class="kpi-l">LoS outliers</div><div class="kpi-v">${losOutliers}</div><div class="kpi-s">≥ 90th pct in peer group</div></div>
+    <div class="kpi am"><div class="kpi-l">Multi-flag (≥2)</div><div class="kpi-v">${multiFlag}</div><div class="kpi-s">Need clinical review</div></div>`;
+
+  // Peer group profiles
+  const peerGroups = {};
+  sc.forEach(r => {
+    const pg = r.peer_group_label;
+    if (!peerGroups[pg]) peerGroups[pg] = [];
+    peerGroups[pg].push(r);
+  });
+  document.getElementById('pgB').innerHTML = Object.entries(peerGroups)
+    .sort((a,b)=>a[0].localeCompare(b[0]))
+    .map(([pg,rows])=>`
+      <div class="peer-row">
+        <div class="peer-lbl">${pg}</div>
+        <div class="peer-stats">
+          <div class="ps"><b>${rows.length}</b> providers</div>
+          <div class="ps">Mean cost <b>${fmt(mean(rows.map(r=>r.mean_episode_cost)))}</b></div>
+          <div class="ps">Mean LoS <b>${mean(rows.map(r=>r.mean_actual_los)).toFixed(1)}d</b></div>
+          <div class="ps">Readmit <b>${pct(mean(rows.map(r=>r.readmission_rate)))}</b></div>
+          <div class="ps">CMI <b>${mean(rows.map(r=>r.case_mix_index)).toFixed(2)}</b></div>
+          <div class="ps">Charlson <b>${mean(rows.map(r=>r.mean_charlson)).toFixed(1)}</b></div>
+        </div>
+      </div>`).join('');
+
+  window._scData = sc;
+  renderPv();
+}
+
+window.pvTab = function(btn, m) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  btn.classList.add('on');
+  _pvMode = m;
+  renderPv();
+};
+function renderPv() {
+  const sc = window._scData || [];
+  let rows = [...sc];
+  if (_pvMode==='bot')  rows = rows.filter(r=>r.performance_tier==='Bottom Quartile');
+  if (_pvMode==='cost') rows = rows.filter(r=>r.cost_outlier===1);
+  if (_pvMode==='multi') rows = rows.filter(r=>r.n_outlier_flags>=2);
+  rows.sort((a,b)=>(b.composite_rank||0)-(a.composite_rank||0));
+  document.getElementById('pvB').innerHTML = rows.map(r=>`<tr>
+    <td><b>${r.provider_id}</b></td>
+    <td>${r.specialty}</td><td>${r.region}</td>
+    <td>${vb(r.volume_tier)}</td>
+    <td>${r.n_episodes}</td>
+    <td>${fmt(r.mean_episode_cost)}</td>
+    <td><span style="color:${r.cost_vs_expected_pct>15?'#a32d2d':r.cost_vs_expected_pct>0?'#854f0b':'#3b6d11'};font-weight:700">${r.cost_vs_expected_pct!=null?(r.cost_vs_expected_pct>0?'+':'')+r.cost_vs_expected_pct.toFixed(1)+'%':'—'}</span></td>
+    <td>${r.mean_actual_los!=null?r.mean_actual_los.toFixed(1)+'d':'—'}</td>
+    <td>${rb(r.readmission_rate)}</td>
+    <td>${r.case_mix_index!=null?r.case_mix_index.toFixed(2):'—'}</td>
+    <td><span class="bx bpu">${r.peer_group_label}</span></td>
+    <td><b>${r.composite_rank!=null?r.composite_rank.toFixed(1):'—'}</b></td>
+    <td>${pb(r.performance_tier)}</td>
+    <td>${r.n_outlier_flags>0?`<span class="bx ${r.n_outlier_flags>=2?'brd':'bam'}">${r.n_outlier_flags} flag${r.n_outlier_flags>1?'s':''}</span>`:`<span class="bx bgr">clean</span>`}</td>
+  </tr>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+//  UPCODING
+// ═══════════════════════════════════════════════════════
+function buildUpcoding(ur, ep) {
+  const hiRisk = ur.filter(r=>r.flag_rate>.2).length;
+  const crRisk = ur.filter(r=>r.flag_rate>.3).length;
+  const totalFlagged = sum(ur.map(r=>r.n_flagged));
+  const totalEps = sum(ur.map(r=>r.n_episodes));
+  const overallRate = totalEps > 0 ? totalFlagged/totalEps : 0;
+
+  document.getElementById('up-kpis').innerHTML = `
+    <div class="kpi rd"><div class="kpi-l">Overall flag rate</div><div class="kpi-v">${pct(overallRate)}</div><div class="kpi-s">${totalFlagged} of ${totalEps.toLocaleString()} episodes</div></div>
+    <div class="kpi am"><div class="kpi-l">High-risk providers</div><div class="kpi-v">${hiRisk}</div><div class="kpi-s">flag rate &gt; 20%</div></div>
+    <div class="kpi pu"><div class="kpi-l">Critical-risk providers</div><div class="kpi-v">${crRisk}</div><div class="kpi-s">flag rate &gt; 30%</div></div>
+    <div class="kpi"><div class="kpi-l">Mean anomaly score</div><div class="kpi-v">${mean(ur.map(r=>r.mean_anomaly_score)).toFixed(3)}</div><div class="kpi-s">Isolation Forest output</div></div>`;
+
+  // Specialty flag rates from ur
+  const specUp = {};
+  ur.forEach(r => {
+    if (!specUp[r.specialty]) specUp[r.specialty] = {flagged:0,total:0};
+    specUp[r.specialty].flagged += r.n_flagged;
+    specUp[r.specialty].total  += r.n_episodes;
+  });
+  const specUpArr = Object.entries(specUp).map(([sp,v])=>({sp,rate:v.total?v.flagged/v.total:0})).sort((a,b)=>b.rate-a.rate);
+  makeChart('upSpec',{type:'bar',data:{
+    labels:specUpArr.map(d=>d.sp.replace('General ','Gen. ')),
+    datasets:[{data:specUpArr.map(d=>+(d.rate*100).toFixed(2)),backgroundColor:specUpArr.map(d=>d.rate>.15?'#E24B4A':d.rate>.08?'#EF9F27':'#1D9E75'),borderRadius:4}]
+  },options:{indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:l=>l.raw.toFixed(1)+'% flag rate'}}},scales:{x:{ticks:{callback:v=>v+'%',font:{size:9}},grid:{color:'rgba(0,0,0,0.05)'}},y:{ticks:{font:{size:10}},grid:{display:false}}},animation:{duration:400}}});
+
+  window._urData = ur;
+  renderUp();
+}
+
+window.upTab = function(btn,m){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  btn.classList.add('on');
+  _upMode=m;
+  renderUp();
+};
+function renderUp(){
+  const ur = window._urData || [];
+  let rows=[...ur];
+  if(_upMode==='hi') rows=rows.filter(r=>r.flag_rate>.2);
+  if(_upMode==='cr') rows=rows.filter(r=>r.flag_rate>.3);
+  rows.sort((a,b)=>b.flag_rate-a.flag_rate);
+  document.getElementById('upB').innerHTML=rows.map(r=>`<tr>
+    <td><b>${r.provider_id}</b></td>
+    <td>${r.specialty}</td><td>${r.region}</td>
+    <td>${vb(r.volume_tier)}</td>
+    <td>${r.n_episodes}</td>
+    <td>${r.n_flagged}</td>
+    <td><b style="color:${r.flag_rate>.2?'#a32d2d':r.flag_rate>.1?'#854f0b':'#3b6d11'}">${pct(r.flag_rate)}</b></td>
+    <td>${r.mean_anomaly_score!=null?r.mean_anomaly_score.toFixed(3):'—'}</td>
+    <td>${fmt(r.mean_episode_cost)}</td>
+    <td>${riskBx(r.provider_risk)}</td>
+  </tr>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+//  ML MODELS — reads from model_summary.md values
+// ═══════════════════════════════════════════════════════
+function buildModels(sc) {
+  // Derive what we can from scorecard
+  const nPeers = new Set(sc.map(r=>r.peer_group_label)).size;
+  const costOut = sc.filter(r=>r.cost_outlier===1).length;
+  const losOut  = sc.filter(r=>r.los_outlier===1).length;
+  const rdOut   = sc.filter(r=>r.readmit_outlier===1).length;
+
+  document.getElementById('mlCards').innerHTML = `
+    <div class="mc">
+      <div class="mc-name">Cost prediction model — XGBoost Regressor</div>
+      <div class="mc-k" style="margin-bottom:3px;font-size:10px;color:#b0aea8">Values from model_summary.md</div>
+      <div class="mc-row"><span class="mc-k">Train R²</span><span class="mc-v g" id="m-tr2">—</span></div>
+      <div class="prog"><div class="prog-f" id="p-tr2" style="background:#3b6d11"></div></div>
+      <div class="mc-row"><span class="mc-k">Test R²</span><span class="mc-v g" id="m-ter2">—</span></div>
+      <div class="prog"><div class="prog-f" id="p-ter2" style="background:#3b6d11"></div></div>
+      <div class="mc-row" style="margin-top:6px"><span class="mc-k">Test RMSE (log scale)</span><span class="mc-v" id="m-rmse">—</span></div>
+      <div class="mc-row"><span class="mc-k">Test MAE (log scale)</span><span class="mc-v" id="m-mae">—</span></div>
+      <div class="mc-note">High R² means DRG weight, Charlson score, and specialty explain most cost variance. Load model_summary.md values to populate.</div>
+    </div>
+    <div class="mc">
+      <div class="mc-name">Readmission classifier — XGBoost + Platt calibration</div>
+      <div class="mc-k" style="margin-bottom:3px;font-size:10px;color:#b0aea8">Values from model_summary.md</div>
+      <div class="mc-row"><span class="mc-k">AUC-ROC</span><span class="mc-v w" id="m-auc">—</span></div>
+      <div class="prog"><div class="prog-f" id="p-auc" style="background:#854f0b"></div></div>
+      <div class="mc-row"><span class="mc-k">AUC-PR</span><span class="mc-v w" id="m-aucpr">—</span></div>
+      <div class="prog"><div class="prog-f" id="p-aucpr" style="background:#854f0b"></div></div>
+      <div class="mc-row" style="margin-top:6px"><span class="mc-k">Sensitivity</span><span class="mc-v" id="m-sens">—</span></div>
+      <div class="mc-row"><span class="mc-k">Specificity</span><span class="mc-v" id="m-spec">—</span></div>
+      <div class="mc-row"><span class="mc-k">PPV (precision)</span><span class="mc-v" id="m-ppv">—</span></div>
+      <div class="mc-row"><span class="mc-k">Decision threshold</span><span class="mc-v" id="m-thr">—</span></div>
+      <div class="mc-note">AUC-ROC 0.70–0.75 is typical for readmission prediction in the literature. Load model_summary.md to see your values.</div>
+    </div>
+    <div class="mc">
+      <div class="mc-name">Anomaly / upcoding detector — Isolation Forest (unsupervised)</div>
+      <div class="mc-k" style="margin-bottom:3px;font-size:10px;color:#b0aea8">Values from model_summary.md</div>
+      <div class="mc-row"><span class="mc-k">AUC-ROC vs ground truth</span><span class="mc-v r" id="m-aauc">—</span></div>
+      <div class="prog"><div class="prog-f" id="p-aauc" style="background:#a32d2d"></div></div>
+      <div class="mc-row" style="margin-top:6px"><span class="mc-k">Precision @ flag threshold</span><span class="mc-v" id="m-ap">—</span></div>
+      <div class="mc-row"><span class="mc-k">Recall</span><span class="mc-v" id="m-ar">—</span></div>
+      <div class="mc-note">Near-random AUC is expected for fully unsupervised detection on synthetic data. Real-world improvement: combine with rule-based pre-filters (LoS &lt; 50% of DRG geo mean).</div>
+    </div>
+    <div class="mc">
+      <div class="mc-name">Provider benchmarking — K-means + percentile ranking</div>
+      <div class="mc-k" style="margin-bottom:3px;font-size:10px;color:#b0aea8">Computed from provider_scorecard.csv</div>
+      <div class="mc-row"><span class="mc-k">Providers benchmarked</span><span class="mc-v g">${sc.length}</span></div>
+      <div class="mc-row"><span class="mc-k">Peer groups</span><span class="mc-v g">${nPeers}</span></div>
+      <div class="mc-row"><span class="mc-k">Cost outliers ≥ 90th pct</span><span class="mc-v r">${costOut}</span></div>
+      <div class="prog"><div class="prog-f" style="width:${(costOut/sc.length*100).toFixed(1)}%;background:#a32d2d"></div></div>
+      <div class="mc-row"><span class="mc-k">LoS outliers ≥ 90th pct</span><span class="mc-v w">${losOut}</span></div>
+      <div class="mc-row"><span class="mc-k">Readmission outliers</span><span class="mc-v w">${rdOut}</span></div>
+      <div class="mc-row" style="margin-top:6px"><span class="mc-k">Provider coverage</span><span class="mc-v g">100%</span></div>
+      <div class="mc-note">Peer groups cluster providers by volume, CMI, and mean severity. Percentile ranks are within-group for fair comparison.</div>
+    </div>`;
+
+  // Add model_summary.md loader
+  const mlSection = document.getElementById('s-models');
+  const loaderDiv = document.createElement('div');
+  loaderDiv.className = 'card';
+  loaderDiv.innerHTML = `
+    <div class="ct">Load model metrics from model_summary.md</div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <input type="file" accept=".md,.txt" id="mdInput" style="font-size:11px;color:#888780" onchange="loadModelSummary(this)">
+      <span style="font-size:10.5px;color:#888780">Select your model_summary.md to populate the metric cards above</span>
+      <span id="mdStatus" style="font-size:10.5px;color:#3b6d11;font-weight:700;display:none">✓ Metrics loaded</span>
+    </div>`;
+  mlSection.insertBefore(loaderDiv, mlSection.firstChild);
+
+  // Also pre-populate if we already have values from upload
+  tryAutoPopulateMetrics();
+
+  makeChart('mlChart',{type:'bar',data:{
+    labels:['Train R²','Test R²','Readmit AUC-ROC','Anomaly AUC-ROC'],
+    datasets:[{
+      label:'Score',
+      data:[0,0,0,0],
+      backgroundColor:['#3b6d11','#3b6d11','#854f0b','#a32d2d'],
+      borderRadius:4,
+      id:'mlBarData'
+    }]
+  },options:{plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:10}},grid:{display:false}},y:{min:0,max:1,ticks:{callback:v=>v.toFixed(1),font:{size:9}},grid:{color:'rgba(0,0,0,0.05)'}}},animation:{duration:400}}});
+}
+
+function tryAutoPopulateMetrics() {
+  // Try to read the uploaded model_summary.md
+  fetch('/mnt/user-data/uploads/model_summary.md')
+    .then(r=>r.text())
+    .then(txt=>parseAndApplyModelSummary(txt))
+    .catch(()=>{}); // silently fail if not available
+}
+
+window.loadModelSummary = function(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    parseAndApplyModelSummary(e.target.result);
+    document.getElementById('mdStatus').style.display = 'inline';
+  };
+  reader.readAsText(file);
+};
+
+function parseAndApplyModelSummary(txt) {
+  const get = (key) => {
+    const m = txt.match(new RegExp(`\\*\\*${key}\\*\\*:\\s*([\\d.]+)`));
+    return m ? parseFloat(m[1]) : null;
+  };
+  const tr2  = get('train_r2');
+  const ter2 = get('test_r2');
+  const rmse = get('test_rmse');
+  const mae  = get('test_mae');
+  const auc  = get('auc_roc') || txt.match(/auc_roc[^\d]*([\d.]+)/i)?.[1];
+  const aucpr= get('auc_pr');
+  const sens = get('sensitivity');
+  const spec = get('specificity');
+  const ppv  = get('ppv');
+  const thr  = get('threshold');
+  const aauc = txt.match(/Anomaly[\s\S]*?auc_roc[^\d]*([\d.]+)/i)?.[1];
+  const ap   = txt.match(/precision.*?([\d.]+)/i)?.[1];
+  const ar   = txt.match(/recall.*?([\d.]+)/i)?.[1];
+
+  if (tr2  != null) { set('m-tr2',  tr2.toFixed(4));  setW('p-tr2',  tr2*100); }
+  if (ter2 != null) { set('m-ter2', ter2.toFixed(4)); setW('p-ter2', ter2*100); }
+  if (rmse != null) set('m-rmse', rmse.toFixed(4));
+  if (mae  != null) set('m-mae',  mae.toFixed(4));
+  if (auc  != null) { const v=parseFloat(auc); set('m-auc',  v.toFixed(4)); setW('p-auc',  v*100); }
+  if (aucpr!= null) { set('m-aucpr', aucpr.toFixed(4)); setW('p-aucpr', aucpr*100); }
+  if (sens != null) set('m-sens', pct(sens));
+  if (spec != null) set('m-spec', pct(spec));
+  if (ppv  != null) set('m-ppv',  pct(ppv));
+  if (thr  != null) set('m-thr',  thr.toFixed(3));
+  if (aauc != null) { const v=parseFloat(aauc); set('m-aauc', v.toFixed(4)); setW('p-aauc', v*100); }
+  if (ap   != null) set('m-ap', pct(parseFloat(ap)));
+  if (ar   != null) set('m-ar', pct(parseFloat(ar)));
+
+  // Update bar chart
+  if (CHARTS['mlChart'] && tr2!=null && ter2!=null) {
+    const d = CHARTS['mlChart'].data.datasets[0].data;
+    d[0]=tr2; d[1]=ter2;
+    if(auc) d[2]=parseFloat(auc);
+    if(aauc) d[3]=parseFloat(aauc);
+    CHARTS['mlChart'].update();
+  }
+}
+
+function set(id,val){ const el=document.getElementById(id); if(el) el.textContent=val; }
+function setW(id,pct){ const el=document.getElementById(id); if(el) el.style.width=Math.min(pct,100).toFixed(1)+'%'; }
+</script>
+</body>
+</html>
